@@ -235,7 +235,7 @@ async def callback(request: Request):
                                 pass
                     else:
                         # สถานะยังไม่ครบ → ส่งเฉพาะข้อความสั้น ๆ และแนบรูปสุดท้าย (ถ้าต้องการ)
-                        msgs = [TextSendMessage(text="⚠️ ยังไม่ครบเงื่อนไข")]
+                        msgs = [TextSendMessage(text="ผลตรวจ WTMS/DMAMA: ⚠️ ยังไม่ครบเงื่อนไข")]
                         if shots:
                             msgs.append(ImageSendMessage(shots[-1], shots[-1]))
                         line_bot_api.push_message(user_id, msgs)
@@ -256,7 +256,7 @@ async def trigger():
         line_bot_api.push_message(LINE_USER_ID, msgs)
         return JSONResponse({"ok": True, "notified": True, "summary": summary})
     else:
-        line_bot_api.push_message(LINE_USER_ID, TextSendMessage(text="ผลตรวจ WTMS/DMAMA:⚠️ ยังไม่ครบเงื่อนไข"))
+        line_bot_api.push_message(LINE_USER_ID, TextSendMessage(text="⚠️ ยังไม่ครบเงื่อนไข"))
         return JSONResponse({"ok": False, "notified": True})
 
 
