@@ -51,25 +51,81 @@ app.mount("/shots", StaticFiles(directory=str(SHOTS_DIR), html=False), name="sho
 
 
 # ===================== Helpers =====================
-async def _snap(page, prefix: str) -> str:
-    """ถ่ายรูปเต็มหน้าและคืน URL สำหรับส่ง LINE"""
-    fname = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-    fpath = SHOTS_DIR / fname
-    await page.screenshot(path=str(fpath), full_page=True)
-    return f"{BASE_URL}/shots/{fname}" if BASE_URL else str(fpath)
-
 async def _login_wtms(page):
     await page.goto(WTMS_URL, wait_until="domcontentloaded")
-    await page.fill("#username", WTMS_USER)
-    await page.fill("#password", WTMS_PASS)
-    try:
-        await page.get_by_role("button", name=re.compile("เข้าสู่ระบบ")).click()
-    except Exception:
-        await page.click('button[type="submit"], input[type="submit"]')
+    # เผื่อมี redirect/โหลดช้า
     try:
         await page.wait_for_load_state("networkidle", timeout=TIMEOUT_MS)
     except PWTimeout:
         pass
+
+    # ลองหาช่อง "ผู้ใช้" ด้วยหลาย selector
+    user_locators = [
+        '#username',
+        'input[name="username"]',
+        'input[type="text"]',
+        'input[placeholder*="รหัสพนักงาน"]',
+        'input[placeholder*="ผู้ใช้"]',
+    ]
+    pass_locators = [
+        '#password',
+        'input[name="password"]',
+        'input[type="password"]',
+        'input[placeholder*="รหัสผ่าน"]',
+    ]
+
+    # หา field ผู้ใช้
+    for sel in user_locators:
+        try:
+            await page.wait_for_selector(sel, timeout=8000)
+            await page.fill(sel, WTMS_USER)
+            break
+        except Exception:
+            continue
+    else:
+        # ไม่เจอช่องผู้ใช้ -> เก็บหลักฐานแล้วโยน error ออกไป
+        html = await page.content()
+        (SHOTS_DIR / "login_page.html").write_text(html, encoding="utf-8")
+        await page.screenshot(path=str(SHOTS_DIR / "login_page.png"), full_page=True)
+        raise RuntimeError("ไม่พบช่องกรอกผู้ใช้บนหน้า WTMS (บันทึกเป็น login_page.* แล้ว)")
+
+    # หา field รหัสผ่าน
+    for sel in pass_locators:
+        try:
+            await page.wait_for_selector(sel, timeout=8000)
+            await page.fill(sel, WTMS_PASS)
+            break
+        except Exception:
+            continue
+
+    # ปุ่มเข้าสู่ระบบหลายแบบ
+    login_buttons = [
+        'button:has-text("เข้าสู่ระบบ")',
+        'input[type="submit"]',
+        'button[type="submit"]',
+        'button:has-text("Login")',
+    ]
+    clicked = False
+    for sel in login_buttons:
+        try:
+            await page.click(sel, timeout=4000)
+            clicked = True
+            break
+        except Exception:
+            continue
+    if not clicked:
+        # ลองกด enter ในช่อง password
+        try:
+            await page.keyboard.press("Enter")
+        except Exception:
+            pass
+
+    # รอให้เข้าสู่ระบบเสร็จ
+    try:
+        await page.wait_for_load_state("networkidle", timeout=TIMEOUT_MS)
+    except PWTimeout:
+        pass
+
 
 async def _click_optional_ack(page) -> bool:
     """ถ้ามีปุ่ม 'รับทราบข้อมูล' ให้กด"""
