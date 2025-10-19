@@ -272,8 +272,14 @@ async def run_wtms_flow() -> dict:
             page.set_default_timeout(TIMEOUT_MS)
 
             # 1) Login
-            await _login_wtms(page)
-            shots.append(await _snap(page, "01_login_ok"))
+            try:
+                await _login_wtms(page)
+            except Exception as e:
+                # dump หน้าแรกไว้ดูว่าเจออะไรจริง ๆ
+                await page.screenshot(path=str(SHOTS_DIR / "login_failed.png"), full_page=True)
+                (SHOTS_DIR / "login_failed.html").write_text(await page.content(), encoding="utf-8")
+                return {"ok": False, "shots": [f"{BASE_URL}/shots/login_failed.png"], "error": f"login-failed: {e}"}
+
 
             # 2) รับทราบถ้ามี
             try:
