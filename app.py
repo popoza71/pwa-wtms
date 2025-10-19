@@ -27,7 +27,8 @@ AUTO_NOTIFY_GREEN = os.getenv("AUTO_NOTIFY_GREEN", "0") == "1"
 
 BASE_URL = (os.getenv("BASE_URL") or "").rstrip("/")
 HEADLESS = os.getenv("HEADLESS", "1") == "1"
-TIMEOUT_MS = int(os.getenv("TIMEOUT_MS", "30000"))
+# ขยายเวลา default ให้ทนขึ้นเล็กน้อย
+TIMEOUT_MS = int(os.getenv("TIMEOUT_MS", "60000"))
 DEBUG = os.getenv("DEBUG", "0") == "1"
 
 WTMS_URL  = "https://wtms.pwa.co.th/"
@@ -254,6 +255,13 @@ async def _verify_green_status_and_dump(page):
 
 
 # ===================== Main Flow =====================
+async def _snap(page, prefix: str) -> str:
+    """ถ่ายรูปเต็มหน้าและคืน URL สำหรับส่ง LINE"""
+    fname = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    fpath = SHOTS_DIR / fname
+    await page.screenshot(path=str(fpath), full_page=True)
+    return f"{BASE_URL}/shots/{fname}" if BASE_URL else str(fpath)
+
 async def run_wtms_flow() -> dict:
     """
     ทำงานครบ:
@@ -275,11 +283,26 @@ async def run_wtms_flow() -> dict:
             try:
                 await _login_wtms(page)
             except Exception as e:
-                # dump หน้าแรกไว้ดูว่าเจออะไรจริง ๆ
-                await page.screenshot(path=str(SHOTS_DIR / "login_failed.png"), full_page=True)
+                # ถ้า login ไม่สำเร็จ → ถ่ายภาพแล้ว "ส่งเข้า LINE" เลย พร้อมเก็บ HTML
+                img_path = SHOTS_DIR / "login_failed.png"
+                await page.screenshot(path=str(img_path), full_page=True)
                 (SHOTS_DIR / "login_failed.html").write_text(await page.content(), encoding="utf-8")
-                return {"ok": False, "shots": [f"{BASE_URL}/shots/login_failed.png"], "error": f"login-failed: {e}"}
+                img_url = f"{BASE_URL}/shots/login_failed.png" if BASE_URL else str(img_path)
 
+                # แจ้งเข้า LINE (ถ้าตั้งค่าไว้)
+                try:
+                    if line_bot_api and LINE_USER_ID:
+                        line_bot_api.push_message(
+                            LINE_USER_ID,
+                            [
+                                TextSendMessage(text=f"❌ Login WTMS ล้มเหลว\n{str(e)}"),
+                                ImageSendMessage(original_content_url=img_url, preview_image_url=img_url),
+                            ],
+                        )
+                except Exception as le:
+                    print("LINE push failed:", le)
+
+                return {"ok": False, "shots": [img_url], "error": f"login-failed: {e}"}
 
             # 2) รับทราบถ้ามี
             try:
@@ -389,4 +412,3 @@ async def callback(request: Request):
                 asyncio.create_task(worker(ev.source.user_id))
 
     return "OK"
-
