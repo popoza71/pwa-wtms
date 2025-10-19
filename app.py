@@ -256,5 +256,7 @@ async def trigger():
         line_bot_api.push_message(LINE_USER_ID, msgs)
         return JSONResponse({"ok": True, "notified": True, "summary": summary})
     else:
-        line_bot_api.push_message(LINE_USER_ID, TextSendMessage(text="⚠️ ยังไม่ครบเงื่อนไข"))
+        line_bot_api.push_message(LINE_USER_ID, TextSendMessage(text="ผลตรวจ WTMS/DMAMA:⚠️ ยังไม่ครบเงื่อนไข"))
         return JSONResponse({"ok": False, "notified": True})
+
+
